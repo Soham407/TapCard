@@ -18,7 +18,7 @@ const PORT = process.env.PORT || 3000;
 // Redirect URLs (customize these for your needs)
 const REDIRECT_URLS = {
     iphone: 'https://apps.apple.com/us/app/your-app-name/id123456789',
-    android: 'https://play.google.com/store/apps/details?id=com.yourcompany.yourapp',
+    android: 'https://www.youtube.com/watch?v=W20ooFdJopg',
     default: 'https://www.yourcompany.com'
 };
 
