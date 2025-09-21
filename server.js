@@ -1,89 +1,80 @@
-/**
- * Smart URL Redirector Service
- * 
- * A lightweight Node.js + Express service that intelligently redirects users
- * based on their device type (iPhone, Android, or Desktop/Other).
- * Optimized for NFC card taps on mobile devices with desktop fallback.
- * 
- * @author Node.js Developer
- * @version 2.0.0
- */
+/** 
+ * Smart URL Redirector and vCard Service 
+ * * A lightweight Node.js + Express service that intelligently serves 
+ * a vCard file based on the user's device type (iPhone or Android/Other). 
+ * * @author Node.js Developer 
+ * @version 3.0.0 
+ */ 
 
 const express = require('express');
+const path = require('path'); // We need this to locate the file 
 const app = express();
 
-// Configuration
-const PORT = process.env.PORT || 3000;
+// Configuration 
+const PORT = process.env.PORT || 3000;  
 
-// Redirect URLs (customize these for your needs)
-const REDIRECT_URLS = {
-    iphone: 'https://apps.apple.com/us/app/your-app-name/id123456789',
-    android: 'https://www.youtube.com/watch?v=W20ooFdJopg',
-    default: 'https://www.yourcompany.com'
-};
-
-/**
- * Middleware to log all incoming requests
- * Useful for debugging and monitoring
- */
+/** 
+ * Middleware to log all incoming requests 
+ * Useful for debugging and monitoring 
+ */ 
 app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - User-Agent: ${req.get('User-Agent')}`);
     next();
 });
 
-/**
- * Main redirect endpoint
- * 
- * GET /tap
- * 
- * Reads the User-Agent header and performs intelligent redirects:
- * - iPhone users → App Store
- * - Android users → Google Play Store
- * - Desktop/Other → Company website
- */
+/** 
+ * Main endpoint for NFC tap 
+ * * GET /tap 
+ * * Reads the User-Agent header and performs an intelligent action: 
+ * - iPhone users   -> Opens the contact card directly. 
+ * - Android/Other  -> Prompts to download the contact file. 
+ */ 
 app.get('/tap', (req, res) => {
-    // Extract User-Agent header from the incoming request
+    // Extract User-Agent header from the incoming request 
     const userAgent = req.get('User-Agent') || '';
-    
-    // Log the detected User-Agent for debugging purposes
-    console.log(`Detected User-Agent: ${userAgent}`);
-    
-    let redirectUrl;
-    let deviceType;
-    
-    // Determine redirect URL based on User-Agent string matching
-    if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
-        // iPhone/iPad detected - redirect to App Store
-        redirectUrl = REDIRECT_URLS.iphone;
-        deviceType = 'iPhone/iPad';
-    } else if (userAgent.includes('Android')) {
-        // Android detected - redirect to Google Play Store
-        redirectUrl = REDIRECT_URLS.android;
-        deviceType = 'Android';
+
+    const filePath = path.join(__dirname, 'contact.vcf');
+    const fileName = 'Anand_Bhutkar_Contact.vcf';
+
+    // *** NEW LOGIC STARTS HERE *** 
+
+    // Check if the request is coming from an iPhone 
+    if (userAgent.includes('iPhone')) {
+        // For iPhones, we send the file with a specific 'Content-Type'. 
+        // This tells iOS to treat it as a contact card and open it directly. 
+        console.log('iPhone detected. Serving vCard directly.');
+        res.setHeader('Content-Type', 'text/vcard');
+        res.sendFile(filePath, (err) => {
+            if (err) {
+                console.error("Error sending file to iPhone:", err);
+                if (!res.headersSent) {
+                    res.status(500).send('Error: Could not process the contact card.');
+                }
+            }
+        });
     } else {
-        // Desktop, tablet, or unknown device - redirect to company website
-        redirectUrl = REDIRECT_URLS.default;
-        deviceType = 'Desktop/Other';
+        // For Android and all other devices, we use the original download method. 
+        // This will trigger a "Save File" prompt. 
+        console.log('Android or other device detected. Triggering download.');
+        res.download(filePath, fileName, (err) => {
+            if (err) {
+                console.error("Error sending file for download:", err);
+                if (!res.headersSent) {
+                    res.status(500).send('Error: Could not download the file.');
+                }
+            }
+        });
     }
-    
-    // Log the redirect decision
-    console.log(`Device Type: ${deviceType} | Redirecting to: ${redirectUrl}`);
-    
-    // Perform 302 (temporary) redirect
-    // Using 302 allows for easy URL changes without caching issues
-    res.redirect(302, redirectUrl);
 });
 
-/**
- * Health check endpoint
- * Useful for monitoring and load balancer health checks
- */
+/** 
+ * Health check endpoint 
+ * Useful for monitoring and load balancer health checks 
+ */ 
 app.get('/health', (req, res) => {
-    res.status(200).json({ 
-        status: 'healthy', 
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        redirect_urls: REDIRECT_URLS
+    res.status(200).json({
+        status: 'healthy',
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -92,14 +83,13 @@ app.get('/health', (req, res) => {
  */
 app.get('/', (req, res) => {
     res.json({
-        service: 'Smart URL Redirector',
-        version: '2.0.0',
+        service: 'Smart vCard Service',
+        version: '3.0.0',
         endpoints: {
-            '/tap': 'Smart device-based redirect handler',
+            '/tap': 'Smart device-based vCard handler',
             '/health': 'Health check endpoint'
         },
-        redirect_urls: REDIRECT_URLS,
-        description: 'Use /tap endpoint for device-optimized URL redirection'
+        description: 'Use /tap endpoint for device-optimized vCard handling'
     });
 });
 
@@ -130,20 +120,10 @@ app.use((err, req, res, next) => {
  */
 const server = app.listen(PORT, () => {
     console.log('===========================================');
-    console.log('🚀 Smart URL Redirector Server Started');
+    console.log('🚀 Smart vCard Server Started');
     console.log(`📡 Server is running on port ${PORT}`);
     console.log(`🔗 Local: http://localhost:${PORT}`);
-    console.log('📱 Ready to handle NFC tap redirects');
-    console.log('===========================================');
-    console.log('Available endpoints:');
-    console.log(`  - GET /tap     : Smart redirect based on device`);
-    console.log(`  - GET /health  : Health check endpoint`);
-    console.log(`  - GET /        : Service information`);
-    console.log('===========================================');
-    console.log('Redirect URLs configured:');
-    console.log(`  - iPhone/iPad: ${REDIRECT_URLS.iphone}`);
-    console.log(`  - Android: ${REDIRECT_URLS.android}`);
-    console.log(`  - Desktop/Other: ${REDIRECT_URLS.default}`);
+    console.log('📱 Ready to handle NFC taps');
     console.log('===========================================');
 });
 

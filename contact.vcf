@@ -1,0 +1,7 @@
+BEGIN:VCARD
+VERSION:3.0
+FN;CHARSET=UTF-8:Temp for testing Testing Testing
+N;CHARSET=UTF-8:Testing;Temp for testing;Testing;Mr.;
+TEL;TYPE=HOME,VOICE:123456789
+REV:2025-09-17T05:58:37.738Z
+END:VCARD
