@@ -66,11 +66,44 @@ app.get('/tap/:cardName', async (req, res) => {
 /**
  * Legacy endpoint for backward compatibility
  * GET /tap
- * Uses the default card (anand) for backward compatibility
+ * Uses the demo.vcf file for backward compatibility
  */
 app.get('/tap', async (req, res) => {
-    // Redirect to the new dynamic endpoint with default card name
-    res.redirect('/tap/anand');
+    const remoteFileUrl = `${VCARD_BASE_URL}/demo.vcf`;
+    const fileName = 'Anand_Bhutkar_Contact.vcf';
+
+    try {
+        console.log(`Fetching remote file from: ${remoteFileUrl}`);
+        
+        // Use axios to get the file as a stream
+        const response = await axios({
+            method: 'get',
+            url: remoteFileUrl,
+            responseType: 'stream'
+        });
+
+        const userAgent = req.get('User-Agent') || '';
+
+        // --- Device detection logic remains the same ---
+        if (userAgent.includes('iPhone')) {
+            console.log(`iPhone detected. Streaming demo card`);
+            res.setHeader('Content-Type', 'text/vcard');
+            response.data.pipe(res); // Pipe the file stream directly to the response
+        } else {
+            console.log(`Android/Other detected. Triggering download for demo card`);
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            response.data.pipe(res); // Pipe the file stream directly to the response
+        }
+
+    } catch (error) {
+        // This block will catch errors if the file doesn't exist on Hostinger
+        console.error(`Error fetching file: ${remoteFileUrl}`, error.message);
+        if (error.response && error.response.status === 404) {
+            res.status(404).json({ error: 'Not Found', message: 'The requested contact card does not exist.' });
+        } else {
+            res.status(500).json({ error: 'Internal Server Error', message: 'Could not retrieve the contact card.' });
+        }
+    }
 });
 
 /**
