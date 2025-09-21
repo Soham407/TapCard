@@ -8,12 +8,13 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "axios": "^1.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
   },
   "keywords": ["redirect", "nfc", "mobile", "express", "smart-redirect"],
-  "author": "Your Name",
+  "author": "Soham Bhutkar",
   "license": "MIT"
 }

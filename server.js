@@ -1,80 +1,88 @@
-/** 
- * Smart URL Redirector and vCard Service 
- * * A lightweight Node.js + Express service that intelligently serves 
- * a vCard file based on the user's device type (iPhone or Android/Other). 
- * * @author Node.js Developer 
- * @version 3.0.0 
- */ 
+/**
+ * Remote vCard Proxy Service
+ * Fetches vCard files from a separate server (Hostinger) and serves them.
+ * @version 5.0.0
+ */
 
 const express = require('express');
-const path = require('path'); // We need this to locate the file 
+const axios = require('axios'); // <-- REQUIRE THE NEW LIBRARY
+
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Configuration 
-const PORT = process.env.PORT || 3000;  
+// Base URL where your vCard files are stored on Hostinger
+const VCARD_BASE_URL = 'http://tapcard.themediatree.co.in/cards';
 
-/** 
- * Middleware to log all incoming requests 
- * Useful for debugging and monitoring 
- */ 
+// Middleware to log requests
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - User-Agent: ${req.get('User-Agent')}`);
     next();
 });
 
-/** 
- * Main endpoint for NFC tap 
- * * GET /tap 
- * * Reads the User-Agent header and performs an intelligent action: 
- * - iPhone users   -> Opens the contact card directly. 
- * - Android/Other  -> Prompts to download the contact file. 
- */ 
-app.get('/tap', (req, res) => {
-    // Extract User-Agent header from the incoming request 
-    const userAgent = req.get('User-Agent') || '';
+/**
+ * Dynamic endpoint for NFC tap
+ * GET /tap/:cardName
+ * Fetches [cardName].vcf from the remote server.
+ */
+app.get('/tap/:cardName', async (req, res) => {
+    const cardName = req.params.cardName;
+    const remoteFileUrl = `${VCARD_BASE_URL}/${cardName}.vcf`;
+    const fileName = `${cardName}_Contact.vcf`;
 
-    const filePath = path.join(__dirname, 'contact.vcf');
-    const fileName = 'Anand_Bhutkar_Contact.vcf';
-
-    // *** NEW LOGIC STARTS HERE *** 
-
-    // Check if the request is coming from an iPhone 
-    if (userAgent.includes('iPhone')) {
-        // For iPhones, we send the file with a specific 'Content-Type'. 
-        // This tells iOS to treat it as a contact card and open it directly. 
-        console.log('iPhone detected. Serving vCard directly.');
-        res.setHeader('Content-Type', 'text/vcard');
-        res.sendFile(filePath, (err) => {
-            if (err) {
-                console.error("Error sending file to iPhone:", err);
-                if (!res.headersSent) {
-                    res.status(500).send('Error: Could not process the contact card.');
-                }
-            }
+    try {
+        console.log(`Fetching remote file from: ${remoteFileUrl}`);
+        
+        // Use axios to get the file as a stream
+        const response = await axios({
+            method: 'get',
+            url: remoteFileUrl,
+            responseType: 'stream'
         });
-    } else {
-        // For Android and all other devices, we use the original download method. 
-        // This will trigger a "Save File" prompt. 
-        console.log('Android or other device detected. Triggering download.');
-        res.download(filePath, fileName, (err) => {
-            if (err) {
-                console.error("Error sending file for download:", err);
-                if (!res.headersSent) {
-                    res.status(500).send('Error: Could not download the file.');
-                }
-            }
-        });
+
+        const userAgent = req.get('User-Agent') || '';
+
+        // --- Device detection logic remains the same ---
+        if (userAgent.includes('iPhone')) {
+            console.log(`iPhone detected. Streaming card: ${cardName}`);
+            res.setHeader('Content-Type', 'text/vcard');
+            response.data.pipe(res); // Pipe the file stream directly to the response
+        } else {
+            console.log(`Android/Other detected. Triggering download for card: ${cardName}`);
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            response.data.pipe(res); // Pipe the file stream directly to the response
+        }
+
+    } catch (error) {
+        // This block will catch errors if the file doesn't exist on Hostinger
+        console.error(`Error fetching file: ${remoteFileUrl}`, error.message);
+        if (error.response && error.response.status === 404) {
+            res.status(404).json({ error: 'Not Found', message: 'The requested contact card does not exist.' });
+        } else {
+            res.status(500).json({ error: 'Internal Server Error', message: 'Could not retrieve the contact card.' });
+        }
     }
 });
 
-/** 
- * Health check endpoint 
- * Useful for monitoring and load balancer health checks 
- */ 
+/**
+ * Legacy endpoint for backward compatibility
+ * GET /tap
+ * Uses the default card (anand) for backward compatibility
+ */
+app.get('/tap', async (req, res) => {
+    // Redirect to the new dynamic endpoint with default card name
+    res.redirect('/tap/anand');
+});
+
+/**
+ * Health check endpoint
+ * Useful for monitoring and load balancer health checks
+ */
 app.get('/health', (req, res) => {
     res.status(200).json({
         status: 'healthy',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        service: 'Remote vCard Proxy Service',
+        version: '5.0.0'
     });
 });
 
@@ -83,13 +91,15 @@ app.get('/health', (req, res) => {
  */
 app.get('/', (req, res) => {
     res.json({
-        service: 'Smart vCard Service',
-        version: '3.0.0',
+        service: 'Remote vCard Proxy Service',
+        version: '5.0.0',
         endpoints: {
-            '/tap': 'Smart device-based vCard handler',
+            '/tap/:cardName': 'Dynamic vCard handler for specific contact cards',
+            '/tap': 'Legacy endpoint (redirects to /tap/anand)',
             '/health': 'Health check endpoint'
         },
-        description: 'Use /tap endpoint for device-optimized vCard handling'
+        description: 'Use /tap/:cardName endpoint for device-optimized vCard handling from remote storage',
+        remoteStorage: VCARD_BASE_URL
     });
 });
 
@@ -100,7 +110,7 @@ app.use((req, res) => {
     res.status(404).json({
         error: 'Not Found',
         message: 'The requested endpoint does not exist',
-        availableEndpoints: ['/', '/tap', '/health']
+        availableEndpoints: ['/', '/tap/:cardName', '/tap', '/health']
     });
 });
 
@@ -120,10 +130,10 @@ app.use((err, req, res, next) => {
  */
 const server = app.listen(PORT, () => {
     console.log('===========================================');
-    console.log('🚀 Smart vCard Server Started');
+    console.log('🚀 Remote vCard Proxy Server Started');
     console.log(`📡 Server is running on port ${PORT}`);
-    console.log(`🔗 Local: http://localhost:${PORT}`);
-    console.log('📱 Ready to handle NFC taps');
+    console.log('📱 Ready to handle NFC taps from remote files');
+    console.log(`🔗 Remote storage: ${VCARD_BASE_URL}`);
     console.log('===========================================');
 });
 
