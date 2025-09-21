@@ -1,0 +1,19 @@
+{
+  "name": "smart-url-redirector",
+  "version": "2.0.0",
+  "description": "Smart URL Redirector Service for device-based redirection",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["redirect", "nfc", "mobile", "express", "smart-redirect"],
+  "author": "Your Name",
+  "license": "MIT"
+}

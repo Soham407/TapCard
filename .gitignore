@@ -1,0 +1,9 @@
+/node_modules
+/files
+/logs
+/logs/*.log
+/logs/*.log.*
+/logs/*.log.*.*
+/logs/*.log.*.*.*
+/logs/*.log.*.*.*.*
+/logs/*.log.*.*.*.*.*
