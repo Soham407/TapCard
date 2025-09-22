@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Base URL where your vCard files are stored on Hostinger
-const VCARD_BASE_URL = 'http://tapcard.themediatree.co.in';
+const VCARD_BASE_URL = 'http://vcard.themediatree.co.in';
 
 // Middleware to log requests
 app.use((req, res, next) => {
