@@ -1,11 +1,13 @@
 /**
  * Remote vCard Proxy Service
  * Fetches vCard files from Supabase Storage and serves them.
- * @version 6.0.0
+ * Includes an admin dashboard for file uploads.
+ * @version 7.0.0
  */
 
 const express = require('express');
 const axios = require('axios');
+const path = require('path'); // Added for serving local files
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
@@ -13,8 +15,8 @@ const PORT = process.env.PORT || 3000;
 
 // --- Supabase configuration ---
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY; // not used server-side unless bucket is public
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY; // for signed URLs server-side
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const SUPABASE_BUCKET = process.env.SUPABASE_VCF_BUCKET || 'vcf';
 const SUPABASE_PUBLIC_BUCKET = String(process.env.SUPABASE_PUBLIC_BUCKET || 'true').toLowerCase() === 'true';
 
@@ -25,7 +27,7 @@ if (!SUPABASE_PUBLIC_BUCKET && !SUPABASE_SERVICE_KEY) {
 	console.warn('[Startup] Private bucket configured but SUPABASE_SERVICE_KEY is missing. Signed URLs will fail.');
 }
 
-// Create a Supabase client (use service role on the server when generating signed URLs)
+// Create a Supabase client
 const supabase = createClient(
 	SUPABASE_URL || '',
 	(SUPABASE_PUBLIC_BUCKET ? (SUPABASE_ANON_KEY || '') : (SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY || ''))
@@ -61,10 +63,19 @@ app.use((req, res, next) => {
 	next();
 });
 
+// --- NEW: Admin Dashboard Route ---
+/**
+ * Serves the admin dashboard for uploading vCard files.
+ * Access it at your base URL followed by /admin
+ */
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dashboard.html'));
+});
+
 /**
  * Dynamic endpoint for NFC tap
  * GET /tap/:cardName
- * Fetches [cardName].vcf from Supabase Storage.
+ * Fetches [cardName].vcf from Supabase Storage. Case-sensitive.
  */
 app.get('/tap/:cardName', async (req, res) => {
 	const cardName = req.params.cardName;
@@ -91,10 +102,12 @@ app.get('/tap/:cardName', async (req, res) => {
 		}
 	} catch (error) {
 		console.error(`Error fetching vCard from Supabase for: ${objectPath}`, error.message || error);
-		// Map Supabase/storage errors to HTTP
-		if (error?.response?.status === 404) {
+		if (error.isAxiosError && error.response && error.response.status === 404) {
 			res.status(404).json({ error: 'Not Found', message: 'The requested contact card does not exist.' });
-		} else {
+		} else if (error.message.includes("not found")) { // Catch Supabase specific not found errors
+            res.status(404).json({ error: 'Not Found', message: 'The requested contact card does not exist.' });
+        }
+        else {
 			res.status(500).json({ error: 'Internal Server Error', message: 'Could not retrieve the contact card.' });
 		}
 	}
@@ -128,7 +141,7 @@ app.get('/tap', async (req, res) => {
 		}
 	} catch (error) {
 		console.error(`Error fetching vCard from Supabase for: ${objectPath}`, error.message || error);
-		if (error?.response?.status === 404) {
+		if (error.isAxiosError && error.response && error.response.status === 404) {
 			res.status(404).json({ error: 'Not Found', message: 'The requested contact card does not exist.' });
 		} else {
 			res.status(500).json({ error: 'Internal Server Error', message: 'Could not retrieve the contact card.' });
@@ -138,14 +151,13 @@ app.get('/tap', async (req, res) => {
 
 /**
  * Health check endpoint
- * Useful for monitoring and load balancer health checks
  */
 app.get('/health', (req, res) => {
 	res.status(200).json({
 		status: 'healthy',
 		timestamp: new Date().toISOString(),
 		service: 'Remote vCard Proxy Service',
-		version: '6.0.0'
+		version: '7.0.0'
 	});
 });
 
@@ -155,15 +167,16 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
 	res.json({
 		service: 'Remote vCard Proxy Service',
-		version: '6.0.0',
+		version: '7.0.0',
 		endpoints: {
+            '/admin': 'Admin dashboard for vCard uploads', // Updated
 			'/tap/:cardName': 'Dynamic vCard handler for specific contact cards',
-			'/tap': 'Legacy endpoint (redirects to /tap/anand)',
+			'/tap': 'Legacy endpoint (uses demo.vcf)',
 			'/health': 'Health check endpoint'
 		},
 		description: 'Use /tap/:cardName endpoint for device-optimized vCard handling from Supabase Storage',
 		supabase: {
-			url: SUPABASE_URL,
+			url: SUPABASE_URL ? `${SUPABASE_URL.substring(0,25)}...` : null,
 			bucket: SUPABASE_BUCKET,
 			public: SUPABASE_PUBLIC_BUCKET
 		}
@@ -177,7 +190,7 @@ app.use((req, res) => {
 	res.status(404).json({
 		error: 'Not Found',
 		message: 'The requested endpoint does not exist',
-		availableEndpoints: ['/', '/tap/:cardName', '/tap', '/health']
+		availableEndpoints: ['/', '/admin', '/tap/:cardName', '/tap', '/health'] // Updated
 	});
 });
 
@@ -202,6 +215,7 @@ const server = app.listen(PORT, () => {
 	console.log('📱 Ready to handle NFC taps from Supabase Storage');
 	console.log(`🔗 Supabase URL: ${SUPABASE_URL}`);
 	console.log(`🪣 Bucket: ${SUPABASE_BUCKET} (public=${SUPABASE_PUBLIC_BUCKET})`);
+    console.log('🔑 Admin Dashboard available at /admin'); // Updated
 	console.log('===========================================');
 });
 

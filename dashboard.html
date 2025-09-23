@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TapCard Admin Dashboard</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase client library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="h-full flex items-center justify-center text-white p-4">
+    <div class="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-lg shadow-2xl">
+        <div>
+            <h2 class="text-3xl font-bold text-center text-white">TapCard Admin</h2>
+            <p class="mt-2 text-center text-gray-400">Upload a .vcf file to generate a tap link.</p>
+        </div>
+        <form id="uploadForm" class="space-y-6">
+            <div>
+                <label for="vcfFile" class="block text-sm font-medium text-gray-300">vCard File (.vcf)</label>
+                <div class="mt-1">
+                    <input id="vcfFile" name="vcfFile" type="file" required accept=".vcf"
+                           class="block w-full px-3 py-2 text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm placeholder-gray-500 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+                </div>
+            </div>
+            <div>
+                <button type="submit" id="uploadButton"
+                        class="relative flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-500 disabled:cursor-not-allowed transition-colors">
+                    <span id="button-icon" class="absolute inset-y-0 left-0 flex items-center pl-3">
+                        <svg class="w-5 h-5 text-indigo-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                        </svg>
+                    </span>
+                    <span id="button-text">Upload & Generate Link</span>
+                </button>
+            </div>
+        </form>
+        <div id="statusMessage" class="text-center min-h-[20px]"></div>
+        <div id="result" class="hidden pt-4 space-y-2">
+            <label for="generatedLink" class="block text-sm font-medium text-gray-300">Your TapCard Link:</label>
+            <div class="flex space-x-2">
+                <input type="text" id="generatedLink" readonly
+                       class="flex-1 block w-full px-3 py-2 text-gray-300 bg-gray-700 border border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                <button id="copyButton" class="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors">Copy</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        // These values are taken from your .env file.
+        const SUPABASE_URL = 'https://lgjqjkclhygzgikxifmm.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxnanFqa2NsaHlnemdpa3hpZm1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg1NDk4MzQsImV4cCI6MjA3NDEyNTgzNH0.izcWvXbofKSduAClWiHngDVGsuIdo4XScI-CQ0jrABs';
+        const BUCKET_NAME = 'vcf';
+        const DOMAIN = 'tapcard.themediatree.co.in';
+
+        // --- APPLICATION LOGIC ---
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const uploadForm = document.getElementById('uploadForm');
+        const vcfFileInput = document.getElementById('vcfFile');
+        const uploadButton = document.getElementById('uploadButton');
+        const buttonText = document.getElementById('button-text');
+        const buttonIcon = document.getElementById('button-icon');
+        const statusMessage = document.getElementById('statusMessage');
+        const resultDiv = document.getElementById('result');
+        const generatedLinkInput = document.getElementById('generatedLink');
+        const copyButton = document.getElementById('copyButton');
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const file = vcfFileInput.files[0];
+            if (!file) {
+                showMessage('Please select a file to upload.', 'error');
+                return;
+            }
+
+            const fileName = file.name;
+            if (!fileName.toLowerCase().endsWith('.vcf')) {
+                 showMessage('Please select a valid .vcf file.', 'error');
+                return;
+            }
+
+            toggleLoading(true, 'Uploading...');
+            showMessage('Uploading, please wait...', 'info');
+            resultDiv.classList.add('hidden');
+
+            try {
+                // Upload the file to Supabase Storage.
+                // It's case-sensitive and will overwrite an existing file with the same name.
+                const { data, error } = await supabaseClient
+                    .storage
+                    .from(BUCKET_NAME)
+                    .upload(fileName, file, {
+                        cacheControl: '3600',
+                        upsert: true 
+                    });
+
+                if (error) {
+                    throw error;
+                }
+                
+                showMessage('File uploaded successfully!', 'success');
+                generateAndDisplayLink(fileName);
+
+            } catch (error) {
+                console.error('Upload Error:', error);
+                showMessage(`Error: ${error.message}`, 'error');
+            } finally {
+                toggleLoading(false, 'Upload & Generate Link');
+                vcfFileInput.value = ''; // Clear file input
+            }
+        });
+        
+        copyButton.addEventListener('click', () => {
+            generatedLinkInput.select();
+            // Use the modern clipboard API if available, with a fallback
+            if (navigator.clipboard) {
+                 navigator.clipboard.writeText(generatedLinkInput.value).then(() => {
+                    copyButton.textContent = 'Copied!';
+                    setTimeout(() => { copyButton.textContent = 'Copy'; }, 2000);
+                 });
+            } else {
+                document.execCommand('copy');
+                copyButton.textContent = 'Copied!';
+                setTimeout(() => { copyButton.textContent = 'Copy'; }, 2000);
+            }
+        });
+
+        function generateAndDisplayLink(fullFileName) {
+            // Remove the .vcf extension for the link, preserving case
+            const nameForLink = fullFileName.replace(/\.vcf$/i, '');
+            const link = `https://${DOMAIN}/tap/${nameForLink}`;
+
+            generatedLinkInput.value = link;
+            resultDiv.classList.remove('hidden');
+        }
+
+        function showMessage(message, type = 'info') {
+            statusMessage.textContent = message;
+            statusMessage.className = 'text-center min-h-[20px] transition-colors duration-300 ';
+            switch (type) {
+                case 'error':
+                    statusMessage.classList.add('text-red-400');
+                    break;
+                case 'success':
+                    statusMessage.classList.add('text-green-400');
+                    break;
+                default:
+                    statusMessage.classList.add('text-gray-400');
+                    break;
+            }
+        }
+        
+        function toggleLoading(isLoading, text) {
+            uploadButton.disabled = isLoading;
+            buttonText.textContent = text;
+            buttonIcon.style.display = isLoading ? 'none' : 'block';
+        }
+    </script>
+</body>
+</html>
